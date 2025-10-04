@@ -265,17 +265,25 @@ with tab_detail:
         import matplotlib.pyplot as plt
         from PIL import Image
         import io
+        from plotly.io import to_image
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # ------------------ 儲存圖表 ------------------
+            # radar_path = os.path.join(tmpdir, "radar.png")
+            # fig_radar.write_image(radar_path)
             radar_path = os.path.join(tmpdir, "radar.png")
-            fig_radar.write_image(radar_path)
+            save_plotly_figure(fig_radar, radar_path)
 
+            # bar_path = os.path.join(tmpdir, "bar.png")
+            # fig_keywords.write_image(bar_path)
             bar_path = os.path.join(tmpdir, "bar.png")
-            fig_keywords.write_image(bar_path)
+            save_plotly_figure(fig_keywords, bar_path)
 
+            # map_path = os.path.join(tmpdir, "map.png")
+            # fig_map.write_image(map_path)
             map_path = os.path.join(tmpdir, "map.png")
-            fig_map.write_image(map_path)
+            save_plotly_figure(fig_map, map_path)
+
 
             # 文字雲
             wc_path = os.path.join(tmpdir, "wc.png")
