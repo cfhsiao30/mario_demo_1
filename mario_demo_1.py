@@ -264,6 +264,7 @@ with tab_detail:
         from wordcloud import WordCloud
         import matplotlib.pyplot as plt
         from PIL import Image
+        import io
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # ------------------ 儲存圖表 ------------------
@@ -292,7 +293,7 @@ with tab_detail:
 
             # 標題
             pdf.set_font("NotoSans", size=15)
-            pdf.multi_cell(0, 10, f"🕹️ Mario 互動魔法鏡：一頁式旅遊評論快照報告(尼泊爾{selected_detail_place})", align="C")
+            pdf.multi_cell(0, 10, f"★ Mario 互動魔法鏡：一頁式旅遊評論快照報告 ({selected_detail_place})", align="C")
             pdf.ln(5)
 
             # 智慧摘要
@@ -326,13 +327,11 @@ with tab_detail:
                 pdf.multi_cell(target_w, 6, title)
                 pdf.image(path, x=x, y=second_row_y, w=target_w, h=img_h)
 
-            # 匯出 PDF
-            out_path = os.path.join(tmpdir, "report.pdf")
-            pdf.output(out_path)
-            with open(out_path, "rb") as f:
-                return f.read()
-
-
+            # ✅ 將 PDF 輸出到記憶體，避免臨時檔案權限問題
+            pdf_bytes = io.BytesIO()
+            pdf.output(pdf_bytes)
+            pdf_bytes.seek(0)
+            return pdf_bytes.read()
 
 
     # ------------------ Streamlit 按鈕 ------------------
