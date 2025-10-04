@@ -257,16 +257,15 @@ with tab_detail:
     st.write("##### 🎯 智慧摘要")
     suggestion = generate_recommendation(df, selected_detail_place)
     st.markdown(suggestion)
+    import tempfile, os, time
+    from fpdf import FPDF
+    from wordcloud import WordCloud
+    import matplotlib.pyplot as plt
+    from PIL import Image
+    import io
+    from plotly.io import to_image
         
     def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place):
-        import tempfile, os, time
-        from fpdf import FPDF
-        from wordcloud import WordCloud
-        import matplotlib.pyplot as plt
-        from PIL import Image
-        import io
-        from plotly.io import to_image
-
 
         # 🔹 helper: 儲存 plotly figure → PNG 檔案
         def save_plotly_figure(fig, out_path, fmt="png"):
@@ -366,6 +365,7 @@ with tab_detail:
             file_name="report.pdf",
             mime="application/pdf"
         )
+
 
 
 
