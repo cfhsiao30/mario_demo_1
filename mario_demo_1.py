@@ -258,6 +258,12 @@ with tab_detail:
     suggestion = generate_recommendation(df, selected_detail_place)
     st.markdown(suggestion)
 
+    def save_plotly_figure(fig, out_path, fmt="png"):
+    # 直接轉成 bytes
+    img_bytes = fig.to_image(format=fmt, scale=2)  # scale=2 → 提高清晰度
+    with open(out_path, "wb") as f:
+        f.write(img_bytes)
+        
     def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place):
         import tempfile, os, time
         from fpdf import FPDF
@@ -359,5 +365,6 @@ with tab_detail:
             file_name="report.pdf",
             mime="application/pdf"
         )
+
 
 
