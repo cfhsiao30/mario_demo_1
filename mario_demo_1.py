@@ -269,9 +269,11 @@ with tab_detail:
 
         # 🔹 helper: 儲存 plotly figure → PNG 檔案
         def save_plotly_figure(fig, out_path, fmt="png"):
-            img_bytes = pio.to_image(fig, format=fmt, scale=2)
+            import plotly.io as pio
+            img_bytes = pio.to_image(fig, format=fmt, scale=2)  # scale=2 提高清晰度
             with open(out_path, "wb") as f:
                 f.write(img_bytes)
+
         
         with tempfile.TemporaryDirectory() as tmpdir:
             # ------------------ 儲存圖表 ------------------
@@ -347,24 +349,25 @@ with tab_detail:
             pdf_bytes.seek(0)
             return pdf_bytes.read()
 
-
     # ------------------ Streamlit 按鈕 ------------------
     if st.button("📑 下載 PDF"):
         pdf_bytes = generate_pdf(
             fig_radar=fig_radar,
             fig_keywords=fig_keywords,
-            tokens=tokens,                  
+            tokens=tokens,
             fig_map=fig_map,
-            suggestion=suggestion,          
+            suggestion=suggestion,
             selected_detail_place=selected_detail_place
         )
-
+    
         st.download_button(
-            "點此下載完整 PDF 報告",
+            label="📥 點此下載完整 PDF 報告",
             data=pdf_bytes,
             file_name="report.pdf",
             mime="application/pdf"
         )
+    
+
 
 
 
