@@ -259,67 +259,50 @@ with tab_detail:
     st.markdown(suggestion)
     
 import streamlit as st
-import plotly.io as pio
+import io, tempfile, os
 from fpdf import FPDF
+from PIL import Image, ImageDraw, ImageFont
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
-import tempfile
-import os
-import io
 
-# ---------- 幫助函式：儲存 Plotly 圖（嘗試用 kaleido、失敗則產生 placeholder） ----------
-def save_plotly_figure(fig, out_path, fmt="png", img_h=400):
-    """
-    嘗試用 plotly/kaleido 轉成 png 存檔；如果失敗會產生一張 placeholder 圖。
-    高度固定為 img_h，寬度按比例縮放。
-    """
+# ---------- 幫助函式：儲存 Plotly 圖（失敗就產生 placeholder） ----------
+def save_plotly_figure_placeholder(out_path, title="Plotly image export failed"):
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), color="white")
+    draw = ImageDraw.Draw(img)
     try:
-        # use kaleido (if available). scale=2 提升解析度
-        img_bytes = pio.to_image(fig, format=fmt, engine="kaleido", scale=2)
-        with open(out_path, "wb") as f:
-            f.write(img_bytes)
-        # 調整高度
-        with Image.open(out_path) as img:
-            w, h = img.size
-            target_w = int(w / h * img_h)
-            img = img.resize((target_w, img_h))
-            img.save(out_path)
-    except Exception as e:
-        # export 失敗，產生 placeholder
-        msg = [
-            "Plotly image export failed",
-            "Install 'kaleido' in requirements.txt and redeploy to fix",
-            f"Error: {type(e).__name__}"
-        ]
-        W, H = int(img_h * 16/9), img_h  # placeholder 長寬比
-        img = Image.new("RGB", (W, H), color="white")
-        draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.load_default()
-        except:
-            font = None
-        y = 20
-        for line in msg:
-            draw.text((20, y), line, fill="black", font=font)
-            y += 20
-        img.save(out_path)
+        font = ImageFont.load_default()
+    except:
+        font = None
+    draw.text((40, 40), title, fill="black", font=font)
+    img.save(out_path)
 
 # ---------- 產生 PDF ----------
 def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place):
     with tempfile.TemporaryDirectory() as tmpdir:
-        # 儲存四張圖
+        # 先建立圖片路徑
         radar_path = os.path.join(tmpdir, "radar.png")
-        save_plotly_figure(fig_radar, radar_path, img_h=400)
-
         bar_path = os.path.join(tmpdir, "bar.png")
-        save_plotly_figure(fig_keywords, bar_path, img_h=400)
-
         map_path = os.path.join(tmpdir, "map.png")
-        save_plotly_figure(fig_map, map_path, img_h=400)
+        wc_path = os.path.join(tmpdir, "wc.png")
+
+        # 嘗試存 Plotly 圖，失敗就用 placeholder
+        try:
+            fig_radar.write_image(radar_path)
+        except:
+            save_plotly_figure_placeholder(radar_path, "Radar chart failed")
+
+        try:
+            fig_keywords.write_image(bar_path)
+        except:
+            save_plotly_figure_placeholder(bar_path, "Bar chart failed")
+
+        try:
+            fig_map.write_image(map_path)
+        except:
+            save_plotly_figure_placeholder(map_path, "Map chart failed")
 
         # 文字雲
-        wc_path = os.path.join(tmpdir, "wc.png")
         wordcloud = WordCloud(width=400, height=400, background_color='white').generate(" ".join(tokens))
         fig_wc, ax_wc = plt.subplots(figsize=(6,6))
         ax_wc.imshow(wordcloud, interpolation='bilinear')
@@ -332,16 +315,18 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
         pdf.add_font('NotoSans', '', r'NotoSansTC-Regular.otf', uni=True)
         pdf.add_page()
 
+        # 標題
         pdf.set_font("NotoSans", size=15)
         pdf.multi_cell(0, 10, f"★ Mario 互動魔法鏡：一頁式旅遊評論快照報告 ({selected_detail_place})", align="C")
         pdf.ln(5)
 
+        # 智慧摘要
         pdf.set_font("NotoSans", size=12)
         pdf.multi_cell(0, 8, f"智慧摘要：{suggestion}")
         pdf.ln(5)
 
-        # 四圖 2x2
-        img_h_mm = 70
+        # 四圖 2x2（固定高度，高度 70mm）
+        img_h = 70
         margin_x, start_y = 15, pdf.get_y() + 5
         gap_x, gap_y = 15, 12
         pdf.set_font("NotoSans", size=11)
@@ -349,22 +334,23 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
         # 上排
         for i, (title, path) in enumerate([("★ 特色雷達圖", radar_path), ("★ 熱門關鍵字", bar_path)]):
             with Image.open(path) as img:
-                target_w = img.width / img.height * img_h_mm
+                target_w = img.width / img.height * img_h
             x = margin_x + i * (target_w + gap_x)
             pdf.set_xy(x, start_y - 6)
             pdf.multi_cell(target_w, 6, title)
-            pdf.image(path, x=x, y=start_y, w=target_w, h=img_h_mm)
+            pdf.image(path, x=x, y=start_y, w=target_w, h=img_h)
 
         # 下排
-        second_row_y = start_y + img_h_mm + gap_y
+        second_row_y = start_y + img_h + gap_y
         for i, (title, path) in enumerate([("★ 關鍵文字雲", wc_path), ("★ 情緒氣泡圖", map_path)]):
             with Image.open(path) as img:
-                target_w = img.width / img.height * img_h_mm
+                target_w = img.width / img.height * img_h
             x = margin_x + i * (target_w + gap_x)
             pdf.set_xy(x, second_row_y - 6)
             pdf.multi_cell(target_w, 6, title)
-            pdf.image(path, x=x, y=second_row_y, w=target_w, h=img_h_mm)
+            pdf.image(path, x=x, y=second_row_y, w=target_w, h=img_h)
 
+        # 匯出 PDF 到 bytes
         pdf_bytes = io.BytesIO()
         pdf.output(pdf_bytes)
         pdf_bytes.seek(0)
@@ -372,7 +358,7 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
 
 # ---------- Streamlit 按鈕 ----------
 if st.button("📑 下載 PDF"):
-    pdf_data = generate_pdf(
+    pdf_bytes = generate_pdf(
         fig_radar=fig_radar,
         fig_keywords=fig_keywords,
         tokens=tokens,
@@ -380,12 +366,15 @@ if st.button("📑 下載 PDF"):
         suggestion=suggestion,
         selected_detail_place=selected_detail_place
     )
+
     st.download_button(
         label="點此下載完整 PDF 報告",
-        data=pdf_data,
+        data=pdf_bytes,
         file_name="report.pdf",
         mime="application/pdf"
     )
+
+
 
 
 
