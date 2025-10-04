@@ -259,95 +259,113 @@ with tab_detail:
     st.markdown(suggestion)
     
 import streamlit as st
-import os, io, tempfile
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
+import io, os, tempfile
 from fpdf import FPDF
 from wordcloud import WordCloud
-from PIL import Image
-import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+import matplotlib.pyplot as plt
+import plotly.io as pio
+from PIL import Image as PILImage
 
-# ---------- Matplotlib 版雷達圖 ----------
-def create_radar_chart(categories, values, title="★ 特色雷達圖"):
-    N = len(categories)
-    angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
-    values += values[:1]
-    angles += angles[:1]
-
-    fig, ax = plt.subplots(figsize=(6,6), subplot_kw=dict(polar=True))
-    ax.plot(angles, values, color='crimson', linewidth=2, linestyle='solid')
-    ax.fill(angles, values, color='crimson', alpha=0.25)
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(categories, fontsize=10)
-    ax.set_yticklabels([])
-    ax.set_title(title, fontsize=12)
-    return fig
-
-# ---------- Matplotlib 版長條圖 ----------
-def create_bar_chart(labels, values, title="★ 熱門關鍵字"):
-    fig, ax = plt.subplots(figsize=(6,6))
-    ax.barh(labels, values, color='skyblue', edgecolor='dodgerblue')
-    ax.set_title(title, fontsize=12)
-    ax.invert_yaxis()
-    return fig
-
-# ---------- Matplotlib 版氣泡圖 ----------
-def create_bubble_chart(x, y, sizes, title="★ 情緒氣泡圖"):
-    fig, ax = plt.subplots(figsize=(6,6))
-    ax.scatter(x, y, s=[s*50 for s in sizes], alpha=0.6, color='orange', edgecolors='darkorange', linewidth=1)
-    ax.set_title(title, fontsize=12)
-    return fig
+# ---------- 幫助函式：儲存 Plotly 圖（嘗試用 kaleido、失敗則產生 placeholder） ----------
+def save_plotly_figure(fig, out_path, fmt="png"):
+    try:
+        # 嘗試用 kaleido
+        img_bytes = pio.to_image(fig, format=fmt, engine="kaleido", scale=2)
+        with open(out_path, "wb") as f:
+            f.write(img_bytes)
+    except Exception as e:
+        # 產生 placeholder
+        msg = [
+            "Plotly image export failed",
+            "Install 'kaleido' in requirements.txt and redeploy to fix",
+            f"Error: {type(e).__name__}"
+        ]
+        W, H = 1200, 800
+        img = Image.new("RGB", (W, H), color="white")
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.load_default()
+        except:
+            font = None
+        y = 40
+        for line in msg:
+            draw.text((40, y), line, fill="black", font=font)
+            y += 28
+        img.save(out_path)
 
 # ---------- PDF 生成函式 ----------
 def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place):
     with tempfile.TemporaryDirectory() as tmpdir:
+        # 儲存 Plotly 圖
         radar_path = os.path.join(tmpdir, "radar.png")
+        save_plotly_figure(fig_radar, radar_path)
+
         bar_path = os.path.join(tmpdir, "bar.png")
+        save_plotly_figure(fig_keywords, bar_path)
+
         map_path = os.path.join(tmpdir, "map.png")
+        save_plotly_figure(fig_map, map_path)
+
+        # 文字雲
         wc_path = os.path.join(tmpdir, "wc.png")
-
-        for fig, path in [(fig_radar, radar_path), (fig_keywords, bar_path), (fig_map, map_path)]:
-            fig.savefig(path, bbox_inches="tight")
-            plt.close(fig)
-
         wordcloud = WordCloud(width=400, height=400, background_color="white").generate(" ".join(tokens or []))
-        fig_wc, ax_wc = plt.subplots(figsize=(6,6))
+        fig_wc, ax_wc = plt.subplots(figsize=(6, 6))
         ax_wc.imshow(wordcloud, interpolation="bilinear")
         ax_wc.axis("off")
         fig_wc.savefig(wc_path, bbox_inches="tight")
         plt.close(fig_wc)
 
+        # 建立 PDF
         pdf = FPDF(orientation="L", format="A4")
+        try:
+            base_dir = os.path.dirname(__file__)
+        except NameError:
+            base_dir = os.getcwd()
+        font_path = os.path.join(base_dir, "NotoSansTC-Regular.otf")
+        if os.path.exists(font_path):
+            try:
+                pdf.add_font("NotoSans", "", font_path, uni=True)
+                font_name = "NotoSans"
+            except:
+                font_name = "Arial"
+        else:
+            font_name = "Arial"
+
         pdf.add_page()
-        pdf.set_font("Arial", size=15)
+        pdf.set_font(font_name, size=15)
         pdf.multi_cell(0, 10, f"★ Mario 互動魔法鏡：一頁式旅遊評論快照報告 ({selected_detail_place})", align="C")
         pdf.ln(5)
-        pdf.set_font("Arial", size=12)
+        pdf.set_font(font_name, size=12)
         pdf.multi_cell(0, 8, f"智慧摘要：{suggestion or ''}")
         pdf.ln(5)
 
+        # ---------- 四圖 2x2 ----------
         img_h = 70
         margin_x, start_y = 15, pdf.get_y() + 5
         gap_x, gap_y = 15, 12
-        pdf.set_font("Arial", size=11)
+        pdf.set_font(font_name, size=11)
 
+        # 上排
         for i, (title, path) in enumerate([("★ 特色雷達圖", radar_path), ("★ 熱門關鍵字", bar_path)]):
-            with Image.open(path) as img:
+            with PILImage.open(path) as img:
                 target_w = img.width / img.height * img_h
             x = margin_x + i * (target_w + gap_x)
             pdf.set_xy(x, start_y - 6)
             pdf.multi_cell(target_w, 6, title)
             pdf.image(path, x=x, y=start_y, w=target_w, h=img_h)
 
+        # 下排
         second_row_y = start_y + img_h + gap_y
         for i, (title, path) in enumerate([("★ 關鍵文字雲", wc_path), ("★ 情緒氣泡圖", map_path)]):
-            with Image.open(path) as img:
+            with PILImage.open(path) as img:
                 target_w = img.width / img.height * img_h
             x = margin_x + i * (target_w + gap_x)
             pdf.set_xy(x, second_row_y - 6)
             pdf.multi_cell(target_w, 6, title)
             pdf.image(path, x=x, y=second_row_y, w=target_w, h=img_h)
 
+        # 輸出 PDF
         out = pdf.output(dest="S")
         if isinstance(out, bytearray):
             out = bytes(out)
@@ -355,7 +373,7 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
             out = out.encode("latin-1")
         return out
 
-# ---------- Streamlit 下載按鈕 ----------
+# ---------- Streamlit 按鈕 ----------
 if st.button("📑 下載 PDF"):
     try:
         pdf_data = generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place)
@@ -366,8 +384,10 @@ if st.button("📑 下載 PDF"):
             mime="application/pdf"
         )
     except Exception as e:
-        st.error("產生 PDF 時發生錯誤，請查看後端日誌或在本機除錯。")
+        st.error("產生 PDF 時發生錯誤，請查看後端日誌或在本機跑一次以便除錯。")
         st.exception(e)
+
+
 
 
 
