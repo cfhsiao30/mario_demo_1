@@ -259,88 +259,59 @@ with tab_detail:
     st.markdown(suggestion)
     
 import streamlit as st
-import io, os, tempfile
+import matplotlib.pyplot as plt
 from fpdf import FPDF
 from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
-import plotly.io as pio
+from PIL import Image
+import tempfile
+import io
+import os
 
-# ---------- 幫助函式：安全儲存 Plotly 圖 ----------
-def save_plotly_figure(fig, out_path, fmt="png"):
-    """
-    嘗試用 plotly/kaleido 轉成 png；失敗則生成 placeholder
-    """
-    try:
-        img_bytes = pio.to_image(fig, format=fmt, engine="kaleido", scale=2)
-        with open(out_path, "wb") as f:
-            f.write(img_bytes)
-    except Exception as e:
-        msg = [
-            "Plotly image export failed",
-            "Install 'kaleido' in requirements.txt and redeploy to fix",
-            f"Error: {type(e).__name__}"
-        ]
-        W, H = 1200, 800
-        img = Image.new("RGB", (W, H), color="white")
-        draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.load_default()
-        except:
-            font = None
-        y = 40
-        for line in msg:
-            draw.text((40, y), line, fill="black", font=font)
-            y += 28
-        img.save(out_path)
+# ---------- 幫助函式：將 Matplotlib figure 存成 PNG ----------
+def save_figure(fig, out_path):
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
 
-# ---------- 生成 PDF ----------
-def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place):
-    import io
+# ---------- 幫助函式：生成 PDF ----------
+def generate_pdf(fig_radar, fig_keywords, fig_map, tokens, suggestion, selected_place):
     with tempfile.TemporaryDirectory() as tmpdir:
-        # ------------------ 儲存圖表 ------------------
+        # 圖片路徑
         radar_path = os.path.join(tmpdir, "radar.png")
         bar_path = os.path.join(tmpdir, "bar.png")
         map_path = os.path.join(tmpdir, "map.png")
+        wc_path = os.path.join(tmpdir, "wc.png")
 
-        save_plotly_figure(fig_radar, radar_path)
-        save_plotly_figure(fig_keywords, bar_path)
-        save_plotly_figure(fig_map, map_path)
+        # 將傳入的 Matplotlib 圖存檔
+        save_figure(fig_radar, radar_path)
+        save_figure(fig_keywords, bar_path)
+        save_figure(fig_map, map_path)
 
         # 文字雲
-        wc_path = os.path.join(tmpdir, "wc.png")
-        wordcloud = WordCloud(width=400, height=400, background_color='white').generate(" ".join(tokens))
-        fig_wc, ax_wc = plt.subplots(figsize=(6,6))
-        ax_wc.imshow(wordcloud, interpolation='bilinear')
+        wc = WordCloud(width=400, height=400, background_color='white').generate(" ".join(tokens))
+        fig_wc, ax_wc = plt.subplots(figsize=(4,4))
+        ax_wc.imshow(wc, interpolation='bilinear')
         ax_wc.axis("off")
-        fig_wc.savefig(wc_path, bbox_inches="tight")
-        plt.close(fig_wc)
+        save_figure(fig_wc, wc_path)
 
-        # ------------------ 建立 PDF ------------------
+        # PDF
         pdf = FPDF(orientation='L', format='A4')
-        pdf.add_font('NotoSans', '', 'NotoSansTC-Regular.otf', uni=True)
         pdf.add_page()
-
-        # 標題
-        pdf.set_font("NotoSans", size=15)
-        pdf.multi_cell(0, 10, f"★ Mario 互動魔法鏡：一頁式旅遊評論快照報告 ({selected_detail_place})", align="C")
+        pdf.set_font("Arial", size=15)
+        pdf.multi_cell(0, 10, f"★ Mario 互動魔法鏡：一頁式旅遊評論快照報告 ({selected_place})", align="C")
         pdf.ln(5)
-
-        # 智慧摘要
-        pdf.set_font("NotoSans", size=12)
+        pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 8, f"智慧摘要：{suggestion}")
         pdf.ln(5)
 
-        # 四圖 2x2
+        # 圖片插入 2x2
         img_h = 70
         margin_x, start_y = 15, pdf.get_y() + 5
         gap_x, gap_y = 15, 12
-        pdf.set_font("NotoSans", size=11)
 
         for i, (title, path) in enumerate([("★ 特色雷達圖", radar_path), ("★ 熱門關鍵字", bar_path)]):
             with Image.open(path) as img:
                 target_w = img.width / img.height * img_h
-            x = margin_x + i * (target_w + gap_x)
+            x = margin_x + i*(target_w + gap_x)
             pdf.set_xy(x, start_y - 6)
             pdf.multi_cell(target_w, 6, title)
             pdf.image(path, x=x, y=start_y, w=target_w, h=img_h)
@@ -349,12 +320,12 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
         for i, (title, path) in enumerate([("★ 關鍵文字雲", wc_path), ("★ 情緒氣泡圖", map_path)]):
             with Image.open(path) as img:
                 target_w = img.width / img.height * img_h
-            x = margin_x + i * (target_w + gap_x)
+            x = margin_x + i*(target_w + gap_x)
             pdf.set_xy(x, second_row_y - 6)
             pdf.multi_cell(target_w, 6, title)
             pdf.image(path, x=x, y=second_row_y, w=target_w, h=img_h)
 
-        # 匯出 PDF
+        # 輸出 PDF 到 BytesIO
         pdf_bytes = io.BytesIO()
         pdf.output(pdf_bytes)
         pdf_bytes.seek(0)
@@ -362,20 +333,22 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
 
 # ---------- Streamlit 按鈕 ----------
 if st.button("📑 下載 PDF"):
-    pdf_bytes = generate_pdf(
+    pdf_data = generate_pdf(
         fig_radar=fig_radar,
         fig_keywords=fig_keywords,
-        tokens=tokens,
         fig_map=fig_map,
+        tokens=tokens,
         suggestion=suggestion,
-        selected_detail_place=selected_detail_place
+        selected_place=selected_detail_place
     )
     st.download_button(
-        "點此下載完整 PDF 報告",
-        data=pdf_bytes,
+        label="點此下載完整 PDF 報告",
+        data=pdf_data,
         file_name="report.pdf",
         mime="application/pdf"
     )
+
+
 
 
 
