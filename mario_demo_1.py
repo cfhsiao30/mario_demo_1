@@ -267,9 +267,13 @@ with tab_detail:
     from wordcloud import WordCloud
     from PIL import Image
     
-    # --------- 幫助函式：存 Plotly 圖 ---------
+    # --------- 幫助函式：存 Plotly 圖，不用外部 Chrome ---------
     def save_plotly_figure(fig, path):
-        fig.write_image(path)
+        # 用 to_image 拿 bytes，不需要外部依賴
+        img_bytes = fig.to_image(format="png")
+        with open(path, "wb") as f:
+            f.write(img_bytes)
+
     
     # --------- PDF 產生函式 ---------
     def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place):
@@ -277,10 +281,10 @@ with tab_detail:
             # 儲存 Plotly 圖片
             radar_path = os.path.join(tmpdir, "radar.png")
             save_plotly_figure(fig_radar, radar_path)
-    
+            
             bar_path = os.path.join(tmpdir, "bar.png")
             save_plotly_figure(fig_keywords, bar_path)
-    
+            
             map_path = os.path.join(tmpdir, "map.png")
             save_plotly_figure(fig_map, map_path)
     
@@ -353,6 +357,7 @@ with tab_detail:
 
 
     
+
 
 
 
