@@ -380,10 +380,13 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
             pdf.image(path, x=x, y=second_row_y, w=target_w, h=img_h)
 
         # ---------- 輸出 PDF 到記憶體 ----------
-        out = pdf.output(dest="S")  # 取得字串形式（latin-1 編碼）
-        if isinstance(out, str):
+        out = pdf.output(dest="S")  # 取得字串或 bytearray
+        if isinstance(out, bytearray):
+            out = bytes(out)          # ✅ 轉成 bytes
+        elif isinstance(out, str):
             out = out.encode("latin-1")
         return out
+
 
 # ---------- Streamlit 下載按鈕（貼入你的 UI 區塊） ----------
 if st.button("📑 下載 PDF"):
@@ -400,6 +403,7 @@ if st.button("📑 下載 PDF"):
         st.error("產生 PDF 時發生錯誤，請查看後端日誌或在本機跑一次以便除錯。")
         # 可視化錯誤細節（僅開發時用）
         st.exception(e)
+
 
 
 
