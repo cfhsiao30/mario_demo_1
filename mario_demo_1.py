@@ -386,7 +386,7 @@ def generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_
         return out
 
 # ---------- Streamlit 下載按鈕（貼入你的 UI 區塊） ----------
-if st.button("📄 產生 PDF 報告"):
+if st.button("📑 下載 PDF"):
     # 確保你在上層已有 fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place
     try:
         pdf_data = generate_pdf(fig_radar, fig_keywords, tokens, fig_map, suggestion, selected_detail_place)
@@ -400,5 +400,6 @@ if st.button("📄 產生 PDF 報告"):
         st.error("產生 PDF 時發生錯誤，請查看後端日誌或在本機跑一次以便除錯。")
         # 可視化錯誤細節（僅開發時用）
         st.exception(e)
+
 
 
