@@ -259,14 +259,12 @@ with tab_detail:
     st.markdown(suggestion)
     
 import streamlit as st
-import plotly.io as pio
+import io, os, tempfile
+import matplotlib.pyplot as plt
 from fpdf import FPDF
 from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-from PIL import Image
-import tempfile
-import os
-import io
+from PIL import Image, ImageDraw, ImageFont
+import plotly.io as pio
 
 # ---------- 將 Plotly 圖存成 PNG ----------
 def save_plotly_png(fig, path, img_h=400):
@@ -366,6 +364,8 @@ if st.button("📑 下載 PDF"):
         file_name="report.pdf",
         mime="application/pdf"
     )
+
+
 
 
 
