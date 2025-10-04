@@ -259,94 +259,148 @@ with tab_detail:
     st.markdown(suggestion)
     
 import streamlit as st
+import io
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 from wordcloud import WordCloud
 from PIL import Image
-import tempfile
-import io
-import os
 
-# ---------- 幫助函式：將 Matplotlib figure 存成 PNG ----------
-def save_figure(fig, out_path):
-    fig.savefig(out_path, bbox_inches="tight")
-    plt.close(fig)
+# ---------- 幫助函式：用 matplotlib 畫圖，存檔 ----------
+def save_figure_matplotlib(fig_func, out_path, *args, **kwargs):
+    """
+    fig_func: 一個函數，回傳 matplotlib.figure.Figure
+    out_path: PNG 輸出路徑
+    args, kwargs: 傳給 fig_func
+    """
+    try:
+        fig = fig_func(*args, **kwargs)
+        fig.savefig(out_path, bbox_inches="tight")
+        plt.close(fig)
+    except Exception as e:
+        # 失敗時產生 placeholder
+        W, H = 1200, 800
+        img = Image.new("RGB", (W, H), color="white")
+        from PIL import ImageDraw, ImageFont
+        draw = ImageDraw.Draw(img)
+        msg = ["Figure generation failed", f"Error: {type(e).__name__}"]
+        try:
+            font = ImageFont.load_default()
+        except:
+            font = None
+        y = 40
+        for line in msg:
+            draw.text((40, y), line, fill="black", font=font)
+            y += 28
+        img.save(out_path)
 
-# ---------- 幫助函式：生成 PDF ----------
-def generate_pdf(fig_radar, fig_keywords, fig_map, tokens, suggestion, selected_place):
+# ---------- 產生 PDF ----------
+def generate_pdf(selected_place, suggestion, radar_scores, keywords_counts, keywords_words, tokens, map_df):
+    import os, tempfile
+
     with tempfile.TemporaryDirectory() as tmpdir:
         # 圖片路徑
         radar_path = os.path.join(tmpdir, "radar.png")
-        bar_path = os.path.join(tmpdir, "bar.png")
-        map_path = os.path.join(tmpdir, "map.png")
-        wc_path = os.path.join(tmpdir, "wc.png")
+        bar_path   = os.path.join(tmpdir, "bar.png")
+        wc_path    = os.path.join(tmpdir, "wc.png")
+        map_path   = os.path.join(tmpdir, "map.png")
 
-        # 將傳入的 Matplotlib 圖存檔
-        save_figure(fig_radar, radar_path)
-        save_figure(fig_keywords, bar_path)
-        save_figure(fig_map, map_path)
+        # 1️⃣ Radar chart
+        def radar_fig(scores):
+            import numpy as np
+            categories = list(scores.keys())
+            values = list(scores.values())
+            N = len(categories)
+            angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+            values += values[:1]
+            angles += angles[:1]
+            fig, ax = plt.subplots(figsize=(6,6), subplot_kw=dict(polar=True))
+            ax.plot(angles, values, 'o-', linewidth=2)
+            ax.fill(angles, values, alpha=0.25)
+            ax.set_thetagrids(np.degrees(angles[:-1]), categories)
+            ax.set_ylim(0,1)
+            return fig
+        save_figure_matplotlib(radar_fig, radar_path, radar_scores)
 
-        # 文字雲
-        wc = WordCloud(width=400, height=400, background_color='white').generate(" ".join(tokens))
-        fig_wc, ax_wc = plt.subplots(figsize=(4,4))
-        ax_wc.imshow(wc, interpolation='bilinear')
+        # 2️⃣ Bar chart
+        def bar_fig(words, counts):
+            fig, ax = plt.subplots(figsize=(6,6))
+            ax.barh(words, counts, color="green")
+            ax.set_xlabel("Counts")
+            ax.set_ylabel("Keywords")
+            ax.invert_yaxis()
+            return fig
+        save_figure_matplotlib(bar_fig, bar_path, keywords_words, keywords_counts)
+
+        # 3️⃣ WordCloud
+        wc = WordCloud(width=400, height=400, background_color="white").generate(" ".join(tokens))
+        fig_wc, ax_wc = plt.subplots(figsize=(6,6))
+        ax_wc.imshow(wc, interpolation="bilinear")
         ax_wc.axis("off")
-        save_figure(fig_wc, wc_path)
+        fig_wc.savefig(wc_path, bbox_inches="tight")
+        plt.close(fig_wc)
 
-        # PDF
-        pdf = FPDF(orientation='L', format='A4')
+        # 4️⃣ Map placeholder (因為 scatter_mapbox 只能 Streamlit 顯示，這裡畫簡單點)
+        fig_map, ax_map = plt.subplots(figsize=(6,6))
+        ax_map.text(0.5,0.5,"情緒氣泡圖\n(下載 PDF 顯示 placeholder)", ha="center", va="center")
+        ax_map.axis("off")
+        fig_map.savefig(map_path, bbox_inches="tight")
+        plt.close(fig_map)
+
+        # ---------- 建立 PDF ----------
+        pdf = FPDF(orientation="L", format="A4")
         pdf.add_page()
-        pdf.set_font("Arial", size=15)
-        pdf.multi_cell(0, 10, f"★ Mario 互動魔法鏡：一頁式旅遊評論快照報告 ({selected_place})", align="C")
+        pdf.set_font("Arial", "", 14)
+
+        # 標題
+        pdf.multi_cell(0, 10, f"★ Mario 互動魔法鏡報告 ({selected_place})", align="C")
         pdf.ln(5)
-        pdf.set_font("Arial", size=12)
+        pdf.set_font("Arial", "", 12)
         pdf.multi_cell(0, 8, f"智慧摘要：{suggestion}")
         pdf.ln(5)
 
-        # 圖片插入 2x2
+        # 四圖 2x2
         img_h = 70
-        margin_x, start_y = 15, pdf.get_y() + 5
+        margin_x, start_y = 15, pdf.get_y()+5
         gap_x, gap_y = 15, 12
 
         for i, (title, path) in enumerate([("★ 特色雷達圖", radar_path), ("★ 熱門關鍵字", bar_path)]):
-            with Image.open(path) as img:
-                target_w = img.width / img.height * img_h
-            x = margin_x + i*(target_w + gap_x)
-            pdf.set_xy(x, start_y - 6)
-            pdf.multi_cell(target_w, 6, title)
-            pdf.image(path, x=x, y=start_y, w=target_w, h=img_h)
+            x = margin_x + i*(img_h + gap_x)
+            pdf.set_xy(x, start_y-6)
+            pdf.multi_cell(img_h,6,title)
+            pdf.image(path,x=x,y=start_y,w=img_h,h=img_h)
 
         second_row_y = start_y + img_h + gap_y
-        for i, (title, path) in enumerate([("★ 關鍵文字雲", wc_path), ("★ 情緒氣泡圖", map_path)]):
-            with Image.open(path) as img:
-                target_w = img.width / img.height * img_h
-            x = margin_x + i*(target_w + gap_x)
-            pdf.set_xy(x, second_row_y - 6)
-            pdf.multi_cell(target_w, 6, title)
-            pdf.image(path, x=x, y=second_row_y, w=target_w, h=img_h)
+        for i, (title,path) in enumerate([("★ 關鍵文字雲", wc_path), ("★ 情緒氣泡圖", map_path)]):
+            x = margin_x + i*(img_h + gap_x)
+            pdf.set_xy(x, second_row_y-6)
+            pdf.multi_cell(img_h,6,title)
+            pdf.image(path,x=x,y=second_row_y,w=img_h,h=img_h)
 
-        # 輸出 PDF 到 BytesIO
+        # 匯出 PDF 到 bytes
         pdf_bytes = io.BytesIO()
         pdf.output(pdf_bytes)
         pdf_bytes.seek(0)
         return pdf_bytes.read()
 
-# ---------- Streamlit 按鈕 ----------
+
+# ---------- Streamlit 下載按鈕 ----------
 if st.button("📑 下載 PDF"):
     pdf_data = generate_pdf(
-        fig_radar=fig_radar,
-        fig_keywords=fig_keywords,
-        fig_map=fig_map,
-        tokens=tokens,
+        selected_place=selected_detail_place,
         suggestion=suggestion,
-        selected_place=selected_detail_place
+        radar_scores=scores,
+        keywords_counts=[count for count in counter.values()],
+        keywords_words=[word for word in counter.keys()],
+        tokens=tokens,
+        map_df=None
     )
     st.download_button(
-        label="點此下載完整 PDF 報告",
+        "點此下載完整 PDF 報告",
         data=pdf_data,
         file_name="report.pdf",
         mime="application/pdf"
     )
+
 
 
 
